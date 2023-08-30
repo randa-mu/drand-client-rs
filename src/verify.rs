@@ -42,7 +42,7 @@ impl<'de> Deserialize<'de> for SchemeID {
             "bls-unchained-on-g1" => Ok(SchemeID::UnchainedOnG1),
             "bls-unchained-g1-rfc9380" => Ok(SchemeID::UnchainedOnG1RFC9380),
             _ => Err(serde::de::Error::unknown_variant(
-                &s,
+                s,
                 &[
                     "pedersen-bls-chained",
                     "pedersen-bls-unchained",
@@ -72,10 +72,10 @@ pub enum VerificationError {
     InvalidRandomness,
 }
 
-pub fn verify_beacon<'a>(
+pub fn verify_beacon(
     scheme_id: &SchemeID,
     public_key: &[u8],
-    beacon: &'a Beacon,
+    beacon: &Beacon,
 ) -> Result<(), VerificationError> {
     if Sha256::digest(&beacon.signature).to_vec() != beacon.randomness {
         return Err(VerificationError::InvalidRandomness);
@@ -108,8 +108,8 @@ pub fn verify_beacon<'a>(
     }
 }
 
-fn unchained_beacon_message<'a>(beacon: &Beacon) -> Result<Vec<u8>, VerificationError> {
-    if beacon.previous_signature.len() > 0 {
+fn unchained_beacon_message(beacon: &Beacon) -> Result<Vec<u8>, VerificationError> {
+    if !beacon.previous_signature.is_empty() {
         return Err(VerificationError::UnchainedHasPreviousSignature);
     }
     let round_bytes = beacon.round_number.to_be_bytes();
@@ -117,19 +117,19 @@ fn unchained_beacon_message<'a>(beacon: &Beacon) -> Result<Vec<u8>, Verification
     Ok(Sha256::digest(&round_bytes).to_vec())
 }
 
-fn chained_beacon_message<'a>(beacon: &Beacon) -> Result<Vec<u8>, VerificationError> {
-    if beacon.previous_signature.len() == 0 {
+fn chained_beacon_message(beacon: &Beacon) -> Result<Vec<u8>, VerificationError> {
+    if beacon.previous_signature.is_empty() {
         Err(VerificationError::ChainedBeaconNeedsPreviousSignature)
     } else {
         // surely there's a better way to concat two slices
         let mut message = Vec::new();
-        message.extend_from_slice(&beacon.previous_signature.as_slice());
+        message.extend_from_slice(beacon.previous_signature.as_slice());
         message.extend_from_slice(&beacon.round_number.to_be_bytes());
         Ok(Sha256::digest(message.as_slice()).to_vec())
     }
 }
 
-pub fn verify_on_g2<'a>(
+pub fn verify_on_g2(
     public_key: &[u8],
     message: &[u8],
     signature: &[u8],
@@ -155,16 +155,16 @@ pub fn verify_on_g2<'a>(
         return Err(VerificationError::InvalidPublicKey);
     }
 
-    if message.len() == 0 {
+    if message.is_empty() {
         return Err(VerificationError::EmptyMessage);
     }
 
-    if signature.len() == 0 {
+    if signature.is_empty() {
         return Err(VerificationError::InvalidSignatureLength);
     }
 
     let m = <G2Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
-        &message,
+        message,
         domain_separation_tag.as_bytes(),
     );
 
@@ -182,7 +182,7 @@ pub fn verify_on_g2<'a>(
     }
 }
 
-pub fn verify_on_g1<'a>(
+pub fn verify_on_g1(
     public_key: &[u8],
     message: &[u8],
     signature: &[u8],
@@ -207,16 +207,16 @@ pub fn verify_on_g1<'a>(
         return Err(VerificationError::InvalidPublicKey);
     }
 
-    if message.len() == 0 {
+    if message.is_empty() {
         return Err(VerificationError::EmptyMessage);
     }
 
-    if signature.len() == 0 {
+    if signature.is_empty() {
         return Err(VerificationError::InvalidSignatureLength);
     }
 
     let m = <G1Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
-        &message,
+        message,
         domain_separation_tag.as_bytes(),
     );
 

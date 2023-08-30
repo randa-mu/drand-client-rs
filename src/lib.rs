@@ -16,14 +16,14 @@ pub struct DrandClient<'a, T: Transport> {
     chain_info: ChainInfo,
 }
 
-fn new_http_client(base_url: &str) -> Result<DrandClient<HttpTransport>, DrandClientError> {
+pub fn new_http_client(base_url: &str) -> Result<DrandClient<HttpTransport>, DrandClientError> {
     let http_transport = new_http_transport();
     let chain_info = fetch_chain_info(&http_transport, base_url)?;
-    return Ok(DrandClient {
+    Ok(DrandClient {
         base_url,
         transport: http_transport,
         chain_info,
-    });
+    })
 }
 
 pub trait Transport {
@@ -69,7 +69,7 @@ impl<'a, T: Transport> DrandClient<'a, T> {
                         &self.chain_info.public_key,
                         &beacon,
                     )
-                    .map_err(|_| DrandClientError::FailedVerification)?;
+                        .map_err(|_| DrandClientError::FailedVerification)?;
                     Ok(beacon)
                 }
                 Err(_) => Err(DrandClientError::InvalidBeacon),

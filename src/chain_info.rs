@@ -1,5 +1,5 @@
+use crate::verify::SchemeID;
 use serde::Deserialize;
-use crate::scheme::SchemeID;
 
 #[derive(Deserialize, Debug, PartialEq, Clone)]
 pub struct ChainInfo {

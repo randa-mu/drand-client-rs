@@ -1,6 +1,6 @@
+use crate::{Transport, TransportError};
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
-use crate::{Transport, TransportError};
 
 pub struct HttpTransport {
     pub client: Client,
@@ -26,6 +26,6 @@ impl Transport for HttpTransport {
 
 pub fn new_http_transport() -> HttpTransport {
     HttpTransport {
-        client: Client::new()
+        client: Client::new(),
     }
 }

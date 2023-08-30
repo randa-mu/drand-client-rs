@@ -3,13 +3,12 @@ extern crate core;
 mod chain_info;
 mod http;
 mod verify;
-mod scheme;
 
 use crate::chain_info::ChainInfo;
+use crate::http::{new_http_transport, HttpTransport};
+use crate::verify::{verify_beacon, Beacon};
 use crate::DrandClientError::{InvalidChainInfo, InvalidRound};
 use thiserror::Error;
-use crate::http::{HttpTransport, new_http_transport};
-use crate::scheme::{Beacon, verify_beacon};
 
 pub struct DrandClient<'a, T: Transport> {
     transport: T,
@@ -37,14 +36,11 @@ pub fn fetch_chain_info(
 ) -> Result<ChainInfo, DrandClientError> {
     let url = format!("{}/info", base_url);
     match transport.fetch(&url) {
-        Err(_) =>
-            Err(DrandClientError::NotResponding),
-        Ok(body) =>
-            serde_json::from_str(&body)
-                .map_err(|e| {
-                    println!("{}", e);
-                    InvalidChainInfo
-                })
+        Err(_) => Err(DrandClientError::NotResponding),
+        Ok(body) => serde_json::from_str(&body).map_err(|e| {
+            println!("{}", e);
+            InvalidChainInfo
+        }),
     }
 }
 
@@ -68,8 +64,12 @@ impl<'a, T: Transport> DrandClient<'a, T> {
 
             Ok(body) => match serde_json::from_str::<Beacon>(&body) {
                 Ok(beacon) => {
-                    verify_beacon(&self.chain_info.scheme_id, &self.chain_info.public_key, &beacon)
-                        .map_err(|_| DrandClientError::FailedVerification)?;
+                    verify_beacon(
+                        &self.chain_info.scheme_id,
+                        &self.chain_info.public_key,
+                        &beacon,
+                    )
+                    .map_err(|_| DrandClientError::FailedVerification)?;
                     Ok(beacon)
                 }
                 Err(_) => Err(DrandClientError::InvalidBeacon),
@@ -100,11 +100,10 @@ pub enum TransportError {
     Unexpected,
 }
 
-
 #[cfg(test)]
 mod test {
     use crate::DrandClientError::InvalidRound;
-    use crate::{DrandClientError, new_http_client};
+    use crate::{new_http_client, DrandClientError};
 
     #[test]
     fn request_chained_randomness_success() -> Result<(), DrandClientError> {
@@ -136,7 +135,8 @@ mod test {
 
     #[test]
     fn request_g1g2swapped_beacon_succeeds() -> Result<(), DrandClientError> {
-        let unchained_url = "https://api.drand.sh/dbd506d6ef76e5f386f41c651dcb808c5bcbd75471cc4eafa3f4df7ad4e4c493";
+        let unchained_url =
+            "https://api.drand.sh/dbd506d6ef76e5f386f41c651dcb808c5bcbd75471cc4eafa3f4df7ad4e4c493";
         let client = new_http_client(unchained_url)?;
         client.randomness(1)?;
         Ok(())
@@ -144,9 +144,19 @@ mod test {
 
     #[test]
     fn request_g1g2swapped_rfc_beacon_succeeds() -> Result<(), DrandClientError> {
-        let unchained_url = "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971";
+        let unchained_url =
+            "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971";
         let client = new_http_client(unchained_url)?;
         client.randomness(1)?;
+        Ok(())
+    }
+
+    #[test]
+    fn request_g1g2swapped_rfc_latest_succeeds() -> Result<(), DrandClientError> {
+        let unchained_url =
+            "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971";
+        let client = new_http_client(unchained_url)?;
+        client.latest_randomness()?;
         Ok(())
     }
 }

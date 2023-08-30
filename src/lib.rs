@@ -69,7 +69,7 @@ impl<'a, T: Transport> DrandClient<'a, T> {
                         &self.chain_info.public_key,
                         &beacon,
                     )
-                        .map_err(|_| DrandClientError::FailedVerification)?;
+                    .map_err(|_| DrandClientError::FailedVerification)?;
                     Ok(beacon)
                 }
                 Err(_) => Err(DrandClientError::InvalidBeacon),

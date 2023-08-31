@@ -121,10 +121,13 @@ fn chained_beacon_message(beacon: &Beacon) -> Result<Vec<u8>, VerificationError>
     if beacon.previous_signature.is_empty() {
         Err(VerificationError::ChainedBeaconNeedsPreviousSignature)
     } else {
-        // surely there's a better way to concat two slices
-        let mut message = Vec::new();
-        message.extend_from_slice(beacon.previous_signature.as_slice());
-        message.extend_from_slice(&beacon.round_number.to_be_bytes());
+        let message: Vec<u8> = beacon
+            .previous_signature
+            .clone()
+            .into_iter()
+            .chain(beacon.round_number.to_be_bytes().into_iter())
+            .collect();
+
         Ok(Sha256::digest(message.as_slice()).to_vec())
     }
 }
@@ -596,7 +599,7 @@ mod test {
     }
 
     fn dehexify(s: &str) -> Vec<u8> {
-        return hex::decode(s).unwrap().to_vec();
+        hex::decode(s).unwrap().to_vec()
     }
 
     fn assert_error(actual: Result<(), VerificationError>, expected: VerificationError) {
@@ -604,7 +607,7 @@ mod test {
             Ok(_) => panic!("expected error but got success"),
             Err(e) => {
                 if e != expected {
-                    panic!("expected {:?} but got {:?}", expected, e);
+                    panic!("expected {expected:?} but got {e:?}");
                 }
             }
         }

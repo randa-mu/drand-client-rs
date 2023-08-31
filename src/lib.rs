@@ -34,7 +34,7 @@ pub fn fetch_chain_info(
     transport: &HttpTransport,
     base_url: &str,
 ) -> Result<ChainInfo, DrandClientError> {
-    let url = format!("{}/info", base_url);
+    let url = format!("{base_url}/info");
     match transport.fetch(&url) {
         Err(_) => Err(DrandClientError::NotResponding),
         Ok(body) => serde_json::from_str(&body).map_err(|e| {
@@ -51,9 +51,10 @@ impl<'a, T: Transport> DrandClient<'a, T> {
 
     pub fn randomness(&self, round_number: u64) -> Result<Beacon, DrandClientError> {
         if round_number == 0 {
-            return Err(InvalidRound);
+            Err(InvalidRound)
+        } else {
+            self.fetch_beacon_tag(&format!("{}", round_number))
         }
-        self.fetch_beacon_tag(&format!("{}", round_number))
     }
 
     fn fetch_beacon_tag(&self, tag: &str) -> Result<Beacon, DrandClientError> {
@@ -111,7 +112,7 @@ mod test {
         let client = new_http_client(chained_url)?;
         let randomness = client.latest_randomness()?;
         assert!(randomness.round_number > 0);
-        return Ok(());
+        Ok(())
     }
 
     #[test]
@@ -120,7 +121,7 @@ mod test {
         let client = new_http_client(unchained_url)?;
         let randomness = client.latest_randomness()?;
         assert!(randomness.round_number > 0);
-        return Ok(());
+        Ok(())
     }
 
     #[test]
@@ -130,7 +131,7 @@ mod test {
         let result = client.randomness(0);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), InvalidRound);
-        return Ok(());
+        Ok(())
     }
 
     #[test]

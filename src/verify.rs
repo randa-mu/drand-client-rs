@@ -125,7 +125,7 @@ fn chained_beacon_message(beacon: &Beacon) -> Result<Vec<u8>, VerificationError>
             .previous_signature
             .clone()
             .into_iter()
-            .chain(beacon.round_number.to_be_bytes().into_iter())
+            .chain(beacon.round_number.to_be_bytes())
             .collect();
 
         Ok(Sha256::digest(message.as_slice()).to_vec())

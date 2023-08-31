@@ -53,7 +53,7 @@ impl<'a, T: Transport> DrandClient<'a, T> {
         if round_number == 0 {
             Err(InvalidRound)
         } else {
-            self.fetch_beacon_tag(&format!("{}", round_number))
+            self.fetch_beacon_tag(&format!("{round_number}"))
         }
     }
 

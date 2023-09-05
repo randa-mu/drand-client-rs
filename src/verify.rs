@@ -56,8 +56,6 @@ impl<'de> Deserialize<'de> for SchemeID {
 
 #[derive(Error, Debug, PartialEq)]
 pub enum VerificationError {
-    #[error("unchained schemes cannot contain a `previous_signature`")]
-    UnchainedHasPreviousSignature,
     #[error("chained beacons must have a `previous_signature`")]
     ChainedBeaconNeedsPreviousSignature,
     #[error("invalid signature length")]
@@ -109,9 +107,6 @@ pub fn verify_beacon(
 }
 
 fn unchained_beacon_message(beacon: &Beacon) -> Result<Vec<u8>, VerificationError> {
-    if !beacon.previous_signature.is_empty() {
-        return Err(VerificationError::UnchainedHasPreviousSignature);
-    }
     let round_bytes = beacon.round_number.to_be_bytes();
 
     Ok(Sha256::digest(&round_bytes).to_vec())
@@ -419,7 +414,7 @@ mod test {
     }
 
     #[test]
-    fn testnet_unchained_beacon_containing_previous_sig_fails() {
+    fn testnet_unchained_beacon_containing_previous_sig_ignores_previous_sig() {
         let public_key = dehexify("8d91ae0f4e3cd277cfc46aba26680232b0d5bb4444602cdb23442d62e17f43cdffb1104909e535430c10a6a1ce680a65");
         let beacon = Beacon {
             round_number: 397092,
@@ -428,10 +423,10 @@ mod test {
             previous_signature: dehexify("94da96b5b985a22a3d99fa3051a42feb4da9218763f6c836fca3770292dbf4b01f5d378859a113960548d167eaa144250a2c8e34c51c5270152ac2bc7a52632236f746545e0fae52f69068c017745204240d19dae2b4d038cef3c6047fcd6539"),
         };
 
-        assert_error(
+        assert!(matches!(
             verify_beacon(&SchemeID::PedersenBlsUnchained, &public_key, &beacon),
-            VerificationError::UnchainedHasPreviousSignature,
-        );
+            Ok(())
+        ));
     }
 
     #[test]

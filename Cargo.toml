@@ -1,5 +1,6 @@
 [package]
 name = "drand-client-rs"
+description = "A small rust library for retrieving random numbers from drand"
 version = "0.1.0"
 edition = "2021"
 

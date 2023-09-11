@@ -1,8 +1,13 @@
+//! # drand-client-rs
+//!
+//! `drand_client_rs` is a small rust library for retrieving random numbers from the [drand network](https://drand.love).
+//!
+
 extern crate core;
 
-mod chain_info;
-mod http;
-mod verify;
+pub mod chain_info;
+pub mod http;
+pub mod verify;
 
 use crate::chain_info::ChainInfo;
 use crate::http::{new_http_transport, HttpTransport};
@@ -10,12 +15,16 @@ use crate::verify::{verify_beacon, Beacon};
 use crate::DrandClientError::{InvalidChainInfo, InvalidRound};
 use thiserror::Error;
 
+/// a struct encapsulating all the necessary state for retrieving and validating drand beacons.
 pub struct DrandClient<'a, T: Transport> {
     transport: T,
     base_url: &'a str,
     chain_info: ChainInfo,
 }
 
+/// create a new instance of the client with an HTTP transport for a given `base_url`.
+/// Supported `base_url`s include: "<https://api.drand.sh>", "<https://drand.cloudflare.com>" and "<https://api.drand.secureweb3.com:6875>".
+/// A full list can be found at <https://drand.love/developer/>
 pub fn new_http_client(base_url: &str) -> Result<DrandClient<HttpTransport>, DrandClientError> {
     let http_transport = new_http_transport();
     let chain_info = fetch_chain_info(&http_transport, base_url)?;
@@ -26,10 +35,14 @@ pub fn new_http_client(base_url: &str) -> Result<DrandClient<HttpTransport>, Dra
     })
 }
 
+/// represents a transport on which to connect to the drand network. This crate provides an
+/// HTTP transport out of the box, which can be created by calling `new_http_transport()`
 pub trait Transport {
     fn fetch(&self, url: &str) -> Result<String, TransportError>;
 }
 
+/// fetch the chain info for a given URL. The chain info contains the public key (used to
+/// verify beacons) and the genesis time (used to calculate the time for given rounds).
 pub fn fetch_chain_info(
     transport: &HttpTransport,
     base_url: &str,
@@ -44,11 +57,14 @@ pub fn fetch_chain_info(
     }
 }
 
+/// an implementation of the logic for retrieving randomness
 impl<'a, T: Transport> DrandClient<'a, T> {
+    /// fetch the latest available randomness beacon
     pub fn latest_randomness(&self) -> Result<Beacon, DrandClientError> {
         self.fetch_beacon_tag("latest")
     }
 
+    /// fetch a randomness beacon for a specific round
     pub fn randomness(&self, round_number: u64) -> Result<Beacon, DrandClientError> {
         if round_number == 0 {
             Err(InvalidRound)

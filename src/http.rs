@@ -1,5 +1,11 @@
+//! # http
+//!
+//! basic HTTP connectors
+//!
+
 use crate::{Transport, TransportError};
 use reqwest::blocking::Client;
+
 use reqwest::StatusCode;
 
 pub struct HttpTransport {
@@ -24,6 +30,7 @@ impl Transport for HttpTransport {
     }
 }
 
+/// a simple implementation of the `Transport` trait using `reqwest` for HTTP endpoints
 pub fn new_http_transport() -> HttpTransport {
     HttpTransport {
         client: Client::new(),

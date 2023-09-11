@@ -1,3 +1,9 @@
+//! # verify
+//!
+//! this module contains some of the cruptographic internals that some users might wish to use
+//! manually without the client
+//!
+
 use bls12_381::hash_to_curve::{ExpandMsgXmd, HashToCurve};
 use bls12_381::{
     multi_miller_loop, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt,
@@ -70,6 +76,7 @@ pub enum VerificationError {
     InvalidRandomness,
 }
 
+/// verify a randomness beacon for a given scheme and public key
 pub fn verify_beacon(
     scheme_id: &SchemeID,
     public_key: &[u8],
@@ -127,6 +134,8 @@ fn chained_beacon_message(beacon: &Beacon) -> Result<Vec<u8>, VerificationError>
     }
 }
 
+/// verify a signature where the public key is on g1 and the signature is on g2 for a
+/// given domain separation tag
 pub fn verify_on_g2(
     public_key: &[u8],
     message: &[u8],
@@ -180,6 +189,8 @@ pub fn verify_on_g2(
     }
 }
 
+/// verify a signature where the public key is on g2 and the signature is on g1 for a
+/// given domain separation tag
 pub fn verify_on_g1(
     public_key: &[u8],
     message: &[u8],

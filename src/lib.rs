@@ -9,6 +9,7 @@ pub mod chain_info;
 pub mod http;
 pub mod verify;
 
+use std::time::{SystemTime, UNIX_EPOCH};
 use crate::chain_info::ChainInfo;
 use crate::http::{new_http_transport, HttpTransport};
 use crate::verify::{verify_beacon, Beacon};
@@ -61,7 +62,15 @@ pub fn fetch_chain_info(
 impl<'a, T: Transport> DrandClient<'a, T> {
     /// fetch the latest available randomness beacon
     pub fn latest_randomness(&self) -> Result<Beacon, DrandClientError> {
-        self.fetch_beacon_tag("latest")
+        let expected_round = round_for_time(&self.chain_info, SystemTime::now())?;
+        let beacon = self.fetch_beacon_tag("latest")?;
+
+        // it could take some time to aggregate beacons, so we tolerate one round early for latest
+        if beacon.round_number < expected_round - 1 {
+            return Err(DrandClientError::InvalidBeacon);
+        }
+
+        Ok(beacon)
     }
 
     /// fetch a randomness beacon for a specific round
@@ -69,7 +78,11 @@ impl<'a, T: Transport> DrandClient<'a, T> {
         if round_number == 0 {
             Err(InvalidRound)
         } else {
-            self.fetch_beacon_tag(&format!("{round_number}"))
+            let beacon = self.fetch_beacon_tag(&format!("{round_number}"))?;
+            if beacon.round_number != round_number {
+                return Err(DrandClientError::InvalidBeacon);
+            }
+            Ok(beacon)
         }
     }
 
@@ -86,13 +99,25 @@ impl<'a, T: Transport> DrandClient<'a, T> {
                         &self.chain_info.public_key,
                         &beacon,
                     )
-                    .map_err(|_| DrandClientError::FailedVerification)?;
+                        .map_err(|_| DrandClientError::FailedVerification)?;
                     Ok(beacon)
                 }
                 Err(_) => Err(DrandClientError::InvalidBeacon),
             },
         }
     }
+}
+
+pub fn round_for_time<'a>(chain_info: &ChainInfo, time: SystemTime) -> Result<u64, DrandClientError> {
+    let epoch_seconds = time.duration_since(UNIX_EPOCH)
+        .map_err(|_| DrandClientError::UnexpectedError)?
+        .as_secs();
+
+    if epoch_seconds <= chain_info.genesis_time {
+        return Err(DrandClientError::RoundBeforeGenesis);
+    }
+
+    return Ok((epoch_seconds - chain_info.genesis_time) / chain_info.period_seconds as u64);
 }
 
 #[derive(Error, Debug, PartialEq)]
@@ -107,6 +132,10 @@ pub enum DrandClientError {
     InvalidChainInfo,
     #[error("not responding")]
     NotResponding,
+    #[error("round before genesis")]
+    RoundBeforeGenesis,
+    #[error("unexpected error")]
+    UnexpectedError,
 }
 
 #[derive(Error, Debug)]
@@ -119,8 +148,11 @@ pub enum TransportError {
 
 #[cfg(test)]
 mod test {
+    use std::time::{SystemTime, UNIX_EPOCH};
     use crate::DrandClientError::InvalidRound;
-    use crate::{new_http_client, DrandClientError};
+    use crate::{new_http_client, DrandClientError, DrandClient, Transport, TransportError};
+    use crate::chain_info::{ChainInfo, ChainInfoMetadata};
+    use crate::verify::SchemeID::PedersenBlsChained;
 
     #[test]
     fn request_chained_randomness_success() -> Result<(), DrandClientError> {
@@ -176,4 +208,118 @@ mod test {
         client.latest_randomness()?;
         Ok(())
     }
+
+    #[test]
+    fn request_mismatching_round_fails() -> Result<(), DrandClientError> {
+        let info = ChainInfo {
+            scheme_id: PedersenBlsChained,
+            public_key: hex::decode("868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31").unwrap(),
+            chain_hash: hex::decode("8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce").unwrap(),
+            group_hash: hex::decode("176f93498eac9ca337150b46d21dd58673ea4e3581185f869672e59fa4cb390a").unwrap(),
+            genesis_time: 1595431050,
+            period_seconds: 30,
+            metadata: ChainInfoMetadata {
+                beacon_id: "default".to_string(),
+            },
+        };
+        let beacon = "{\"round\":2,\"randomness\":\"e8fee7dac6eb2b89df97d631cfccedbada7d5d05495bb546eef462e4145fdf8f\",\"signature\":\"aa18facd2d51b616511d542de6f9af8a3b920121401dad1434ed1db4a565f10e04fad8d9b2b4e3e0094364374caafe9b10478bf75650124831509c638b5a36a7a232ec70289f8751a2adb47fc32eb70b57dc81c39d48cbcac9fec46cdfc31663\",\"previous_signature\":\"8d61d9100567de44682506aea1a7a6fa6e5491cd27a0a0ed349ef6910ac5ac20ff7bc3e09d7c046566c9f7f3c6f3b10104990e7cb424998203d8f7de586fb7fa5f60045417a432684f85093b06ca91c769f0e7ca19268375e659c2a2352b4655\"";
+        let transport = MockTransport { beacon };
+        let client = DrandClient {
+            transport,
+            base_url: "api.drand.sh",
+            chain_info: info,
+        };
+
+        client.randomness(4).expect_err("expected error for mismatching round");
+        Ok(())
+    }
+
+
+    #[test]
+    fn request_latest_round_too_far_in_past_fails() -> Result<(), DrandClientError> {
+        let info = ChainInfo {
+            scheme_id: PedersenBlsChained,
+            public_key: hex::decode("868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31").unwrap(),
+            chain_hash: hex::decode("8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce").unwrap(),
+            group_hash: hex::decode("176f93498eac9ca337150b46d21dd58673ea4e3581185f869672e59fa4cb390a").unwrap(),
+            genesis_time: 1595431050,
+            period_seconds: 30,
+            metadata: ChainInfoMetadata {
+                beacon_id: "default".to_string(),
+            },
+        };
+        let beacon = "{\"round\":2,\"randomness\":\"e8fee7dac6eb2b89df97d631cfccedbada7d5d05495bb546eef462e4145fdf8f\",\"signature\":\"aa18facd2d51b616511d542de6f9af8a3b920121401dad1434ed1db4a565f10e04fad8d9b2b4e3e0094364374caafe9b10478bf75650124831509c638b5a36a7a232ec70289f8751a2adb47fc32eb70b57dc81c39d48cbcac9fec46cdfc31663\",\"previous_signature\":\"8d61d9100567de44682506aea1a7a6fa6e5491cd27a0a0ed349ef6910ac5ac20ff7bc3e09d7c046566c9f7f3c6f3b10104990e7cb424998203d8f7de586fb7fa5f60045417a432684f85093b06ca91c769f0e7ca19268375e659c2a2352b4655\"";
+        let transport = MockTransport { beacon };
+        let client = DrandClient {
+            transport,
+            base_url: "api.drand.sh",
+            chain_info: info,
+        };
+
+        client.latest_randomness().expect_err("expected error for mismatching round");
+        Ok(())
+    }
+
+    #[test]
+    fn request_latest_single_round_early_succeeds() -> Result<(), DrandClientError> {
+        let info = ChainInfo {
+            scheme_id: PedersenBlsChained,
+            public_key: hex::decode("868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31").unwrap(),
+            chain_hash: hex::decode("8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce").unwrap(),
+            group_hash: hex::decode("176f93498eac9ca337150b46d21dd58673ea4e3581185f869672e59fa4cb390a").unwrap(),
+            // here we set genesis so it should be round 3
+            genesis_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - 90,
+            period_seconds: 30,
+            metadata: ChainInfoMetadata {
+                beacon_id: "default".to_string(),
+            },
+        };
+        let beacon = "{\"round\":2,\"randomness\":\"e8fee7dac6eb2b89df97d631cfccedbada7d5d05495bb546eef462e4145fdf8f\",\"signature\":\"aa18facd2d51b616511d542de6f9af8a3b920121401dad1434ed1db4a565f10e04fad8d9b2b4e3e0094364374caafe9b10478bf75650124831509c638b5a36a7a232ec70289f8751a2adb47fc32eb70b57dc81c39d48cbcac9fec46cdfc31663\",\"previous_signature\":\"8d61d9100567de44682506aea1a7a6fa6e5491cd27a0a0ed349ef6910ac5ac20ff7bc3e09d7c046566c9f7f3c6f3b10104990e7cb424998203d8f7de586fb7fa5f60045417a432684f85093b06ca91c769f0e7ca19268375e659c2a2352b4655\"}";
+        let transport = MockTransport { beacon };
+        let client = DrandClient {
+            transport,
+            base_url: "api.drand.sh",
+            chain_info: info,
+        };
+
+        client.latest_randomness().expect("beacon should be returned successfully");
+        Ok(())
+    }
+
+    #[test]
+    fn request_latest_future_round_succeeds() -> Result<(), DrandClientError> {
+        let info = ChainInfo {
+            scheme_id: PedersenBlsChained,
+            public_key: hex::decode("868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31").unwrap(),
+            chain_hash: hex::decode("8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce").unwrap(),
+            group_hash: hex::decode("176f93498eac9ca337150b46d21dd58673ea4e3581185f869672e59fa4cb390a").unwrap(),
+            genesis_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - 30,
+            period_seconds: 30,
+            metadata: ChainInfoMetadata {
+                beacon_id: "default".to_string(),
+            },
+        };
+        let beacon = "{\"round\":2,\"randomness\":\"e8fee7dac6eb2b89df97d631cfccedbada7d5d05495bb546eef462e4145fdf8f\",\"signature\":\"aa18facd2d51b616511d542de6f9af8a3b920121401dad1434ed1db4a565f10e04fad8d9b2b4e3e0094364374caafe9b10478bf75650124831509c638b5a36a7a232ec70289f8751a2adb47fc32eb70b57dc81c39d48cbcac9fec46cdfc31663\",\"previous_signature\":\"8d61d9100567de44682506aea1a7a6fa6e5491cd27a0a0ed349ef6910ac5ac20ff7bc3e09d7c046566c9f7f3c6f3b10104990e7cb424998203d8f7de586fb7fa5f60045417a432684f85093b06ca91c769f0e7ca19268375e659c2a2352b4655\"}";
+        let transport = MockTransport { beacon };
+        let client = DrandClient {
+            transport,
+            base_url: "api.drand.sh",
+            chain_info: info,
+        };
+
+        client.latest_randomness().expect("beacon should be returned successfully");
+        Ok(())
+    }
+
+
+    struct MockTransport<'a> {
+        beacon: &'a str,
+    }
+
+    impl Transport for MockTransport<'_> {
+        fn fetch(&self, _: &str) -> Result<String, TransportError> {
+            return Ok(self.beacon.to_string());
+        }
+    }
 }
+

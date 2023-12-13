@@ -118,7 +118,8 @@ pub fn round_for_time(chain_info: &ChainInfo, time: SystemTime) -> Result<u64, D
         return Err(DrandClientError::RoundBeforeGenesis);
     }
 
-    Ok((epoch_seconds - chain_info.genesis_time) / chain_info.period_seconds as u64)
+    // at genesis, the round == 1, so we add 1
+    Ok((epoch_seconds - chain_info.genesis_time) / chain_info.period_seconds as u64 + 1)
 }
 
 #[derive(Error, Debug, PartialEq)]
@@ -272,7 +273,7 @@ mod test {
             chain_hash: hex::decode("8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce").unwrap(),
             group_hash: hex::decode("176f93498eac9ca337150b46d21dd58673ea4e3581185f869672e59fa4cb390a").unwrap(),
             // here we set genesis so it should be round 3
-            genesis_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - 90,
+            genesis_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - 60,
             period_seconds: 30,
             metadata: ChainInfoMetadata {
                 beacon_id: "default".to_string(),

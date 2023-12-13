@@ -9,11 +9,11 @@ pub mod chain_info;
 pub mod http;
 pub mod verify;
 
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::chain_info::ChainInfo;
 use crate::http::{new_http_transport, HttpTransport};
 use crate::verify::{verify_beacon, Beacon};
 use crate::DrandClientError::{InvalidChainInfo, InvalidRound};
+use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 /// a struct encapsulating all the necessary state for retrieving and validating drand beacons.
@@ -99,7 +99,7 @@ impl<'a, T: Transport> DrandClient<'a, T> {
                         &self.chain_info.public_key,
                         &beacon,
                     )
-                        .map_err(|_| DrandClientError::FailedVerification)?;
+                    .map_err(|_| DrandClientError::FailedVerification)?;
                     Ok(beacon)
                 }
                 Err(_) => Err(DrandClientError::InvalidBeacon),
@@ -108,8 +108,9 @@ impl<'a, T: Transport> DrandClient<'a, T> {
     }
 }
 
-pub fn round_for_time<'a>(chain_info: &ChainInfo, time: SystemTime) -> Result<u64, DrandClientError> {
-    let epoch_seconds = time.duration_since(UNIX_EPOCH)
+pub fn round_for_time(chain_info: &ChainInfo, time: SystemTime) -> Result<u64, DrandClientError> {
+    let epoch_seconds = time
+        .duration_since(UNIX_EPOCH)
         .map_err(|_| DrandClientError::UnexpectedError)?
         .as_secs();
 
@@ -117,7 +118,7 @@ pub fn round_for_time<'a>(chain_info: &ChainInfo, time: SystemTime) -> Result<u6
         return Err(DrandClientError::RoundBeforeGenesis);
     }
 
-    return Ok((epoch_seconds - chain_info.genesis_time) / chain_info.period_seconds as u64);
+    Ok((epoch_seconds - chain_info.genesis_time) / chain_info.period_seconds as u64)
 }
 
 #[derive(Error, Debug, PartialEq)]
@@ -148,11 +149,11 @@ pub enum TransportError {
 
 #[cfg(test)]
 mod test {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    use crate::DrandClientError::InvalidRound;
-    use crate::{new_http_client, DrandClientError, DrandClient, Transport, TransportError};
     use crate::chain_info::{ChainInfo, ChainInfoMetadata};
     use crate::verify::SchemeID::PedersenBlsChained;
+    use crate::DrandClientError::InvalidRound;
+    use crate::{new_http_client, DrandClient, DrandClientError, Transport, TransportError};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn request_chained_randomness_success() -> Result<(), DrandClientError> {
@@ -230,10 +231,11 @@ mod test {
             chain_info: info,
         };
 
-        client.randomness(4).expect_err("expected error for mismatching round");
+        client
+            .randomness(4)
+            .expect_err("expected error for mismatching round");
         Ok(())
     }
-
 
     #[test]
     fn request_latest_round_too_far_in_past_fails() -> Result<(), DrandClientError> {
@@ -256,7 +258,9 @@ mod test {
             chain_info: info,
         };
 
-        client.latest_randomness().expect_err("expected error for mismatching round");
+        client
+            .latest_randomness()
+            .expect_err("expected error for mismatching round");
         Ok(())
     }
 
@@ -282,7 +286,9 @@ mod test {
             chain_info: info,
         };
 
-        client.latest_randomness().expect("beacon should be returned successfully");
+        client
+            .latest_randomness()
+            .expect("beacon should be returned successfully");
         Ok(())
     }
 
@@ -307,10 +313,11 @@ mod test {
             chain_info: info,
         };
 
-        client.latest_randomness().expect("beacon should be returned successfully");
+        client
+            .latest_randomness()
+            .expect("beacon should be returned successfully");
         Ok(())
     }
-
 
     struct MockTransport<'a> {
         beacon: &'a str,
@@ -318,8 +325,7 @@ mod test {
 
     impl Transport for MockTransport<'_> {
         fn fetch(&self, _: &str) -> Result<String, TransportError> {
-            return Ok(self.beacon.to_string());
+            Ok(self.beacon.to_string())
         }
     }
 }
-
